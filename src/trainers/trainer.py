@@ -147,7 +147,7 @@ class Trainer:
         return total_loss / len(self.train_loader)
 
     @torch.no_grad()
-    def evaluate(self, loader: DataLoader, prefix: str = "val") -> Dict:
+    def evaluate(self, loader: DataLoader, prefix: str = "val", epoch: int = None) -> Dict:
         self.model.eval()
         
         all_preds = []
@@ -221,12 +221,30 @@ class Trainer:
                 logger.error(f"Error computing metrics: {e}")
                 metrics = {"bleu_4": 0.0, "rouge_l": 0.0}
             
-            if self.use_wandb and len(all_preds) > 0:
-                sample_df = pd.DataFrame({
-                    "Target": all_labels[:10],
-                    "Prediction": all_preds[:10]
+            if len(all_preds) > 0:
+                # 1. Log top 50 samples to WandB dashboard
+                if self.use_wandb:
+                    sample_df = pd.DataFrame({
+                        "Target": all_labels[:50],
+                        "Prediction": all_preds[:50]
+                    })
+                    wandb.log({f"{prefix}/samples": wandb.Table(dataframe=sample_df)})
+                
+                # 2. Save ALL predictions to a local CSV file
+                full_df = pd.DataFrame({
+                    "Target": all_labels,
+                    "Prediction": all_preds
                 })
-                wandb.log({f"{prefix}/samples": wandb.Table(dataframe=sample_df)})
+                
+                # Create a predictions folder inside your checkpoint directory
+                pred_dir = self.checkpoint_dir / "predictions"
+                pred_dir.mkdir(exist_ok=True)
+                
+                # Save the CSV with the epoch number
+                epoch_str = f"{epoch}" if epoch is not None else "final"
+                csv_path = pred_dir / f"{prefix}_predictions_epoch_{epoch_str}.csv"
+                full_df.to_csv(csv_path, index=False)
+                logger.info(f"Saved all {len(full_df)} predictions to {csv_path}")
                 
         return metrics
 
@@ -266,7 +284,7 @@ class Trainer:
                     wandb.log({"train/loss_epoch": train_loss, "epoch": epoch})
                     
             if epoch % self.eval_every == 0:
-                val_metrics = self.evaluate(self.val_loader, prefix="val")
+                val_metrics = self.evaluate(self.val_loader, prefix="val", epoch=epoch)
                 
                 if self.is_main_process:
                     logger.info(f"Validation Metrics: {val_metrics}")
