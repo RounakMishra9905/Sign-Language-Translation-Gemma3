@@ -1,0 +1,41 @@
+data:
+  train_path: '/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/train_split_unicode_filtered_matched.csv'
+  val_path: '/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/val_split_unicode_filtered_matched.csv'
+  test_path: '/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/test_split_unicode_filtered_matched.csv'
+  pose_dir: '/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/performance'
+  max_frames: 300
+  max_length: 128
+  step_frames: 5
+  num_keypoints: 266
+
+model:
+  name: 't5-base'
+  tokenizer: 't5-base'
+  dropout: 0.1
+  freeze_encoder: false
+  freeze_decoder: false
+  params: {}
+  special_tokens:
+    additional_special_tokens: ['<PERSON>', '<UNKNOWN>']
+
+training:
+  num_epochs: 100
+  batch_size: 128
+  learning_rate: 3e-4
+  weight_decay: 0.01
+  betas: [0.9, 0.999]
+  max_grad_norm: 1.0
+  gradient_accumulation_steps: 1
+  mixed_precision: true
+  warmup_ratio: 0.1
+  checkpoint_dir: 'checkpoints/t5_base_isign_4gpu'
+  save_every: 5
+  eval_every: 1
+  num_beams: 5
+  max_gen_length: 128
+  use_wandb: false
+  project_name: 'sign-language-translation'
+  run_name: 't5_base_isign_4gpu'
+  num_workers: 0  # Start with 0
+  
+seed: 42

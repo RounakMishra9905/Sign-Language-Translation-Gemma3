@@ -1,0 +1,68 @@
+# Configuration for Llama-3.1-8B on iSign Dataset
+# Meta's open-source LLM - decoder-only architecture
+# Note: Requires HuggingFace access token for gated models
+
+# Data Configuration
+data:
+  train_path: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/train_split_unicode_filtered_matched.csv"
+  val_path: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/val_split_unicode_filtered_matched.csv"
+  test_path: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/test_split_unicode_filtered_matched.csv"
+  pose_dir: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/performance"
+  
+  max_frames: 300
+  max_length: 128
+  step_frames: 5
+  num_keypoints: 266
+
+# Model Configuration
+model:
+  name: "meta-llama/Llama-3.1-8B"  # Requires HF access token
+  tokenizer: "meta-llama/Llama-3.1-8B"
+  
+  dropout: 0.1
+  freeze_encoder: false
+  freeze_decoder: false
+  
+  # LoRA configuration
+  use_lora: true
+  lora_config:
+    r: 16
+    lora_alpha: 32
+    target_modules: ["q_proj", "v_proj", "k_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+    lora_dropout: 0.1
+    bias: "none"
+  
+  # Quantization (highly recommended)
+  load_in_8bit: false
+  load_in_4bit: true  # Use 4-bit for memory efficiency
+  
+  params:
+    use_auth_token: true  # Will use HF_TOKEN environment variable
+
+# Training Configuration  
+training:
+  num_epochs: 30
+  batch_size: 2  # Very small for 8B model
+  learning_rate: 2e-4
+  weight_decay: 0.01
+  betas: [0.9, 0.999]
+  
+  max_grad_norm: 1.0
+  gradient_accumulation_steps: 16  # Effective batch = 32
+  mixed_precision: true
+  warmup_ratio: 0.1
+  
+  checkpoint_dir: "checkpoints/llama3.1_8b_isign"
+  save_every: 5
+  eval_every: 1
+  
+  num_beams: 5
+  max_gen_length: 128
+  
+  use_wandb: true
+  project_name: "sign-language-translation"
+  run_name: "llama3.1_8b_lora_isign"
+  
+  num_workers: 4
+
+seed: 42

@@ -1,0 +1,66 @@
+# Configuration for Qwen 2.5-7B on iSign Dataset
+# Latest Qwen version (October 2024) - RECOMMENDED for translation tasks
+
+# Data Configuration
+data:
+  train_path: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/train_split_unicode_filtered_matched.csv"
+  val_path: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/val_split_unicode_filtered_matched.csv"
+  test_path: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/test_split_unicode_filtered_matched.csv"
+  pose_dir: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/performance"
+  
+  max_frames: 300
+  max_length: 128
+  step_frames: 5
+  num_keypoints: 266
+
+# Model Configuration
+model:
+  name: "Qwen/Qwen2.5-7B"  # Latest Qwen 2.5 base model
+  tokenizer: "Qwen/Qwen2.5-7B"
+  
+  dropout: 0.1
+  freeze_encoder: false
+  freeze_decoder: false
+  
+  # LoRA configuration (REQUIRED for 7B models)
+  use_lora: true
+  lora_config:
+    r: 16  # Rank
+    lora_alpha: 32  # Scaling
+    target_modules: ["q_proj", "k_proj", "v_proj", "o_proj"]  # All attention
+    lora_dropout: 0.1
+    bias: "none"
+  
+  # Quantization (optional but recommended for memory efficiency)
+  load_in_8bit: false
+  load_in_4bit: true  # Recommended: Fits in 10GB GPU
+  
+  params: {}
+
+# Training Configuration
+training:
+  num_epochs: 30
+  batch_size: 8  # Small batch for 7B model
+  learning_rate: 2e-4  # Standard for LoRA
+  weight_decay: 0.01
+  betas: [0.9, 0.999]
+  
+  max_grad_norm: 1.0
+  gradient_accumulation_steps: 4  # Effective batch = 32
+  mixed_precision: true
+  warmup_ratio: 0.1
+  
+  checkpoint_dir: "checkpoints/qwen2.5_7b_isign"
+  save_every: 5
+  eval_every: 1
+  
+  num_beams: 5
+  max_gen_length: 128
+  
+  use_wandb: true
+  project_name: "sign-language-translation"
+  run_name: "qwen2.5_7b_lora_isign"
+  
+  num_workers: 4
+
+seed: 42

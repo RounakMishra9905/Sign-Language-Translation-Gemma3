@@ -1,0 +1,67 @@
+# Configuration for T5-3B with LoRA (Low-Rank Adaptation)
+# Memory-efficient fine-tuning of very large models
+# Requires: pip install peft
+
+# Data Configuration
+data:
+ train_path: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/train_split_unicode_filtered_matched.csv"
+  val_path: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/val_split_unicode_filtered_matched.csv"
+  test_path: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/test_split_unicode_filtered_matched.csv"
+  pose_dir: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/performance"
+  
+  max_frames: 300
+  max_length: 128
+  step_frames: 5
+  num_keypoints: 152
+
+# Model Configuration
+model:
+  name: "t5-3b"  # Very large model
+  tokenizer: "t5-3b"
+  
+  dropout: 0.1
+  freeze_encoder: false
+  freeze_decoder: false
+  
+  # LoRA configuration (optional - uncomment to use)
+  use_lora: true
+  lora_config:
+    r: 16  # Rank of LoRA matrices
+    lora_alpha: 32  # Scaling factor
+    lora_dropout: 0.1
+    target_modules: ["q", "v"]  # Apply LoRA to query and value matrices
+    bias: "none"
+    task_type: "SEQ_2_SEQ_LM"
+  
+  params: {}
+  
+  special_tokens:
+    additional_special_tokens: ["<PERSON>", "<UNKNOWN>"]
+
+# Training Configuration
+training:
+  num_epochs: 30
+  batch_size: 4  # Very small batch for 3B model
+  learning_rate: 1e-4
+  weight_decay: 0.01
+  betas: [0.9, 0.999]
+  
+  max_grad_norm: 1.0
+  gradient_accumulation_steps: 8  # Effective batch = 32
+  mixed_precision: true
+  warmup_ratio: 0.1
+  
+  checkpoint_dir: "checkpoints/t5_3b_lora_isign"
+  save_every: 5
+  eval_every: 1
+  
+  num_beams: 5
+  max_gen_length: 128
+  
+  use_wandb: true
+  project_name: "sign-language-translation"
+  run_name: "t5_3b_lora_isign"
+  
+  num_workers: 4
+
+seed: 42

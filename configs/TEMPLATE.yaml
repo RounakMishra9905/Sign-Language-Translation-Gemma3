@@ -1,0 +1,129 @@
+# TEMPLATE Configuration - Copy and customize this file
+# Usage: cp configs/TEMPLATE.yaml configs/my_experiment.yaml
+
+# ==============================================================================
+# DATA PATHS - EDIT THESE WITH YOUR PATHS
+# ==============================================================================
+
+data:
+  # CSV files with columns: uid, text
+  # Example format from your mentor:
+  # train_csv = '/DATACSEShare/sanjeet/dattatreya/.../train_split_unicode_filtered_matched.csv'
+  
+  train_path: "/PATH/TO/YOUR/train.csv"  # ← CHANGE THIS
+  val_path: "/PATH/TO/YOUR/val.csv"      # ← CHANGE THIS
+  test_path: "/PATH/TO/YOUR/test.csv"    # ← CHANGE THIS
+  
+  # Pose directory containing .pose files
+  # Example from your mentor:
+  # POSE_DIR_ISIGN = "/DATACSEShare/sanjeet/dattatreya/.../performance/"
+  
+  pose_dir: "/PATH/TO/YOUR/POSE/FILES/"  # ← CHANGE THIS
+  
+  # Data processing parameters (usually don't need to change)
+  max_frames: 300
+  max_length: 128
+  step_frames: 5       # Subsample every 5th frame
+  num_keypoints: 152   # MediaPipe: 75 face + 42 hands + 33 body + 2 (x,y)
+
+# ==============================================================================
+# MODEL CONFIGURATION - CHOOSE YOUR MODEL
+# ==============================================================================
+
+model:
+  # Model from HuggingFace (examples below)
+  name: "Qwen/Qwen2.5-7B-Instruct"  # ← CHANGE THIS to any HF model
+  tokenizer: "Qwen/Qwen2.5-7B-Instruct"
+  
+  # Memory optimization settings
+  dropout: 0.1
+  freeze_encoder: false
+  freeze_decoder: false
+  
+  # LoRA configuration (for large models 7B+)
+  use_lora: true
+  lora_config:
+    r: 16
+    lora_alpha: 32
+    target_modules: ["q_proj", "k_proj", "v_proj", "o_proj"]
+    lora_dropout: 0.1
+    bias: "none"
+  
+  # Quantization (optional, saves memory)
+  load_in_8bit: false
+  load_in_4bit: true   # Recommended for 7B+ models
+  
+  # Additional parameters (optional)
+  params: {}
+
+# ==============================================================================
+# TRAINING CONFIGURATION
+# ==============================================================================
+
+training:
+  # Training hyperparameters
+  num_epochs: 30
+  batch_size: 4
+  learning_rate: 1e-4
+  weight_decay: 0.01
+  betas: [0.9, 0.999]
+  
+  # Optimization
+  max_grad_norm: 1.0
+  gradient_accumulation_steps: 8  # Effective batch = batch_size * this
+  mixed_precision: true
+  warmup_ratio: 0.1
+  
+  # Checkpointing
+  checkpoint_dir: "checkpoints/my_experiment"  # ← CHANGE THIS
+  save_every: 5      # Save checkpoint every N epochs
+  eval_every: 1      # Evaluate every N epochs
+  
+  # Generation parameters
+  num_beams: 5
+  max_gen_length: 128
+  
+  # Experiment tracking (WandB)
+  use_wandb: true
+  project_name: "sign-language-translation"
+  run_name: "my_experiment"  # ← CHANGE THIS (unique name)
+  
+  # Data loading
+  num_workers: 4
+
+# Random seed for reproducibility
+seed: 42
+
+# ==============================================================================
+# POPULAR MODEL OPTIONS (Uncomment and use)
+# ==============================================================================
+
+# Option 1: T5-Base (Seq2Seq, good baseline)
+# model:
+#   name: "t5-base"
+#   tokenizer: "t5-base"
+#   use_lora: false
+#   load_in_4bit: false
+
+# Option 2: Qwen2.5-7B-Instruct (Recommended, best quality)
+# model:
+#   name: "Qwen/Qwen2.5-7B-Instruct"
+#   tokenizer: "Qwen/Qwen2.5-7B-Instruct"
+#   use_lora: true
+#   load_in_4bit: true
+
+# Option 3: Gemma-7B
+# model:
+#   name: "google/gemma-7b"
+#   tokenizer: "google/gemma-7b"
+#   use_lora: true
+#   load_in_4bit: true
+
+# Option 4: Llama-3.1-8B (requires HF token)
+# model:
+#   name: "meta-llama/Llama-3.1-8B"
+#   tokenizer: "meta-llama/Llama-3.1-8B"
+#   use_lora: true
+#   load_in_4bit: true
+#   params:
+#     use_auth_token: true  # Set HF_TOKEN environment variable

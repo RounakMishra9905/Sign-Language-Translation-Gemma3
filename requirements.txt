@@ -1,0 +1,28 @@
+# Core Dependencies
+torch>=2.0.0
+transformers>=4.30.0
+tokenizers>=0.13.0
+
+# Data Processing
+pandas>=1.5.0
+numpy>=1.24.0
+pose-format>=0.4.0
+
+# Training & Optimization
+accelerate>=0.20.0
+wandb>=0.15.0
+pyyaml>=6.0
+peft>=0.5.0  # For LoRA/QLoRA fine-tuning
+bitsandbytes>=0.41.0  # For 8-bit and 4-bit quantization
+
+# Evaluation
+sacrebleu>=2.3.0
+rouge-score>=0.1.2
+
+# Utilities
+tqdm>=4.65.0
+scikit-learn>=1.3.0
+
+# Optional but recommended
+# apex  # For mixed precision (if available)
+# deepspeed  # For advanced training optimizations

@@ -1,0 +1,359 @@
+"""
+Generic Sign Language DataLoader - UPDATED
+Supports both .pose and .pkl formats with variable keypoint counts
+"""
+
+import torch
+import numpy as np
+import pandas as pd
+from torch.utils.data import Dataset, DataLoader
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+import pickle
+from transformers import PreTrainedTokenizer
+import logging
+
+logger = logging.getLogger(__name__)
+
+# Try to import pose_format (optional)
+try:
+    from pose_format import Pose
+    POSE_FORMAT_AVAILABLE = True
+except ImportError:
+    POSE_FORMAT_AVAILABLE = False
+    logger.warning("pose_format not available, .pose files not supported")
+
+
+class SignLanguageDataset(Dataset):
+    def __init__(
+        self,
+        data_path: str,
+        pose_dir: str,
+        tokenizer: PreTrainedTokenizer,
+        max_frames: int = 300,
+        max_length: int = 128,
+        step_frames: int = 1,
+        add_noise: bool = False,
+        noise_std: float = 0.01,
+        use_video: bool = False,
+        num_keypoints: int = 266,  # 133 × 2
+        labels: Optional[List[List[int]]] = None,
+    ):
+        self.data_path = Path(data_path)
+        self.pose_dir = Path(pose_dir)
+        self.tokenizer = tokenizer
+        self.max_frames = max_frames
+        self.max_length = max_length
+        self.step_frames = step_frames
+        self.add_noise = add_noise
+        self.noise_std = noise_std
+        self.use_video = use_video
+        self.num_keypoints = num_keypoints
+
+        self.target_joints = num_keypoints // 2  # 133
+
+        self.df = pd.read_csv(self.data_path)
+        logger.info(f"Loaded {len(self.df)} samples from {self.data_path}")
+
+        if labels is not None:
+            self.labels = labels
+        else:
+            self.labels = self._tokenize_texts(self.df["text"].tolist())
+
+    def _tokenize_texts(self, texts: List[str]) -> List[List[int]]:
+        encodings = self.tokenizer(
+            texts,
+            max_length=self.max_length,
+            padding="max_length",
+            truncation=True,
+            return_tensors="pt",
+        )
+        return encodings["input_ids"].tolist()
+
+    def _load_pose(self, uid: str) -> np.ndarray:
+        """Load pose from either .pkl or .pose file"""
+        # Try .pkl first (pickle format)
+        pkl_path = self.pose_dir / f"{uid}.pkl"
+        if pkl_path.exists():
+            return self._load_pkl_pose(pkl_path)
+        
+        # Try .pose format
+        pose_path = self.pose_dir / f"{uid}.pose"
+        if pose_path.exists():
+            return self._load_pose_format(pose_path)
+        
+        logger.warning(f"Pose file not found: {uid} (tried .pkl and .pose)")
+        return self._empty_pose()
+    
+    def _load_pkl_pose(self, path: Path) -> np.ndarray:
+        """Load pose from pickle file"""
+        try:
+            with open(path, "rb") as f:
+                pose_dict = pickle.load(f)
+
+            keypoints = self._extract_keypoints_from_dict(pose_dict)
+            keypoints = keypoints[:: self.step_frames]
+
+            if self.add_noise:
+                keypoints += np.random.normal(0, self.noise_std, keypoints.shape)
+
+            return self._pad_or_truncate(keypoints, self.max_frames)
+
+        except Exception as e:
+            logger.error(f"Error loading pickle pose {path.stem}: {e}")
+            return self._empty_pose()
+    
+    def _load_pose_format(self, path: Path) -> np.ndarray:
+        """Load pose from .pose format file"""
+        if not POSE_FORMAT_AVAILABLE:
+            logger.error("pose_format library not installed")
+            return self._empty_pose()
+        
+        try:
+            with open(path, 'rb') as f:
+                pose = Pose.read(f.read())
+            
+            keypoints = self._extract_keypoints_from_pose(pose)
+            keypoints = keypoints[::self.step_frames]
+            
+            if self.add_noise:
+                noise = np.random.normal(0, self.noise_std, keypoints.shape)
+                keypoints = keypoints + noise
+            
+            keypoints = self._pad_or_truncate(keypoints, self.max_frames)
+            
+            return keypoints
+            
+        except Exception as e:
+            logger.error(f"Error loading pose format {path.stem}: {e}")
+            return self._empty_pose()
+
+    def _extract_keypoints_from_dict(self, pose_dict: dict) -> np.ndarray:
+        """
+        Extract keypoints from pickle dictionary format.
+        Handles variable-length keypoints per frame.
+        """
+        if "keypoints" not in pose_dict:
+            raise ValueError("Pose dict missing 'keypoints' key")
+
+        raw_keypoints = pose_dict["keypoints"]
+        
+        # Try direct conversion first (works if all frames have same K)
+        try:
+            keypoints = np.asarray(raw_keypoints, dtype=np.float32)
+            
+            # Handle different shapes
+            if keypoints.ndim == 4:  # (T, 1, K, 2)
+                keypoints = keypoints[:, 0]  # → (T, K, 2)
+            elif keypoints.ndim == 3:  # (T, K, 2)
+                pass  # Already correct
+            else:
+                raise ValueError(f"Invalid shape: {keypoints.shape}")
+            
+            T, K, C = keypoints.shape
+            assert C == 2, f"Expected 2 coords, got {C}"
+            
+        except (ValueError, TypeError) as e:
+            # Ragged array - handle frame by frame
+            logger.debug(f"Processing variable-length keypoints: {e}")
+            keypoints = self._process_ragged_keypoints(raw_keypoints)
+            T, K, C = keypoints.shape
+
+        # Normalize to exactly target_joints
+        if K > self.target_joints:
+            keypoints = keypoints[:, :self.target_joints, :]
+        elif K < self.target_joints:
+            pad_width = ((0, 0), (0, self.target_joints - K), (0, 0))
+            keypoints = np.pad(keypoints, pad_width, mode='constant')
+        
+        # (T, 133, 2) → (T, 266)
+        return keypoints.reshape(T, -1)
+    
+    def _process_ragged_keypoints(self, raw_keypoints) -> np.ndarray:
+        """
+        Process when frames have different numbers of keypoints.
+        Returns: (T, max_K, 2)
+        """
+        processed_frames = []
+        
+        for frame_data in raw_keypoints:
+            try:
+                # Convert to array
+                if isinstance(frame_data, (list, tuple)):
+                    # Unwrap nested single-element lists
+                    while (isinstance(frame_data, (list, tuple)) and 
+                           len(frame_data) == 1 and 
+                           isinstance(frame_data[0], (list, tuple))):
+                        frame_data = frame_data[0]
+                    
+                    frame_array = np.asarray(frame_data, dtype=np.float32)
+                else:
+                    frame_array = np.asarray(frame_data, dtype=np.float32)
+                
+                # Reshape to (K, 2)
+                if frame_array.ndim == 1:
+                    # Flattened [x1,y1,x2,y2,...] → (K, 2)
+                    frame_array = frame_array.reshape(-1, 2)
+                elif frame_array.ndim == 3:
+                    # (1, K, 2) → (K, 2)
+                    if frame_array.shape[0] == 1:
+                        frame_array = frame_array[0]
+                    else:
+                        frame_array = frame_array[:, :, 0]  # Take first?
+                elif frame_array.ndim == 2:
+                    # Already (K, 2) or (2, K)
+                    if frame_array.shape[0] == 2 and frame_array.shape[1] != 2:
+                        frame_array = frame_array.T  # (2, K) → (K, 2)
+                else:
+                    # Invalid - use zeros
+                    frame_array = np.zeros((1, 2), dtype=np.float32)
+                
+                # Final validation
+                if frame_array.shape[1] != 2:
+                    frame_array = np.zeros((1, 2), dtype=np.float32)
+                
+                processed_frames.append(frame_array)
+                
+            except Exception as e:
+                logger.warning(f"Frame processing error: {e}, using zeros")
+                processed_frames.append(np.zeros((1, 2), dtype=np.float32))
+        
+        if not processed_frames:
+            return np.zeros((1, self.target_joints, 2), dtype=np.float32)
+        
+        # Find max keypoints across frames (cap at target)
+        max_K = min(
+            max(frame.shape[0] for frame in processed_frames),
+            self.target_joints
+        )
+        
+        # Pad all frames to max_K
+        normalized_frames = []
+        for frame in processed_frames:
+            K = frame.shape[0]
+            if K > max_K:
+                frame = frame[:max_K]
+            elif K < max_K:
+                pad = np.zeros((max_K - K, 2), dtype=np.float32)
+                frame = np.vstack([frame, pad])
+            normalized_frames.append(frame)
+        
+        # Stack: (T, max_K, 2)
+        return np.stack(normalized_frames, axis=0)
+    
+    def _extract_keypoints_from_pose(self, pose: 'Pose') -> np.ndarray:
+        """Extract keypoints from pose-format Pose object"""
+        try:
+            # Get pose data: (frames, people, points, dims)
+            pose_data = pose.body.data
+            
+            # Take first person
+            if pose_data.shape[1] > 0:
+                keypoints = pose_data[:, 0, :, :2]  # (T, K, 2)
+            else:
+                return np.zeros((1, self.num_keypoints), dtype=np.float32)
+            
+            T, K, C = keypoints.shape
+            
+            # Pad/truncate to target_joints
+            if K > self.target_joints:
+                keypoints = keypoints[:, :self.target_joints, :]
+            elif K < self.target_joints:
+                pad_width = ((0, 0), (0, self.target_joints - K), (0, 0))
+                keypoints = np.pad(keypoints, pad_width, mode='constant')
+            
+            # (T, 133, 2) → (T, 266)
+            return keypoints.reshape(T, -1)
+            
+        except Exception as e:
+            logger.error(f"Error extracting from Pose object: {e}")
+            return np.zeros((1, self.num_keypoints), dtype=np.float32)
+
+    def _pad_or_truncate(self, sequence: np.ndarray, max_len: int) -> np.ndarray:
+        """Pad or truncate sequence to max_len"""
+        T, D = sequence.shape
+
+        if T > max_len:
+            return sequence[:max_len]
+
+        if T < max_len:
+            pad = np.zeros((max_len - T, D), dtype=np.float32)
+            return np.vstack([sequence, pad])
+
+        return sequence
+
+    def _empty_pose(self) -> np.ndarray:
+        """Return zero pose"""
+        return np.zeros((self.max_frames, self.num_keypoints), dtype=np.float32)
+
+    def _create_attention_mask(self, sequence: np.ndarray) -> np.ndarray:
+        """Create attention mask (1 for real frames, 0 for padding)"""
+        return (~np.all(sequence == 0, axis=1)).astype(np.float32)
+
+    def __len__(self) -> int:
+        return len(self.df)
+
+    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
+        row = self.df.iloc[idx]
+        uid = row.get("uid", row.get("video_path", str(idx)))
+
+        pose = self._load_pose(uid)
+
+        return {
+            "input_ids": torch.from_numpy(pose),
+            "attention_mask": torch.from_numpy(self._create_attention_mask(pose)),
+            "labels": torch.LongTensor(self.labels[idx]),
+        }
+
+
+def create_dataloaders(
+    train_path: str,
+    val_path: str,
+    test_path: str,
+    pose_dir: str,
+    tokenizer: PreTrainedTokenizer,
+    batch_size: int = 32,
+    num_workers: int = 4,
+    **dataset_kwargs,
+) -> Tuple[DataLoader, DataLoader, DataLoader]:
+    """Create train/val/test dataloaders"""
+
+    train_dataset = SignLanguageDataset(
+        train_path, pose_dir, tokenizer, add_noise=True, **dataset_kwargs
+    )
+    val_dataset = SignLanguageDataset(
+        val_path, pose_dir, tokenizer, add_noise=False, **dataset_kwargs
+    )
+    test_dataset = SignLanguageDataset(
+        test_path, pose_dir, tokenizer, add_noise=False, **dataset_kwargs
+    )
+
+    logger.info(
+        f"Created dataloaders: Train={len(train_dataset)}, "
+        f"Val={len(val_dataset)}, Test={len(test_dataset)}"
+    )
+
+    return (
+        DataLoader(
+            train_dataset,
+            batch_size,
+            shuffle=True,
+            num_workers=num_workers,
+            pin_memory=True,
+            drop_last=True,
+        ),
+        DataLoader(
+            val_dataset,
+            batch_size,
+            shuffle=False,
+            num_workers=num_workers,
+            pin_memory=True,
+        ),
+        DataLoader(
+            test_dataset,
+            batch_size,
+            shuffle=False,
+            num_workers=num_workers,
+            pin_memory=True,
+        ),
+    )

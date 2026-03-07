@@ -1,0 +1,66 @@
+# Configuration for Qwen2-7B on iSign Dataset
+# Alibaba's open-source LLM - decoder-only architecture
+
+# Data Configuration
+data:
+  train_path: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/train_split_unicode_filtered_matched.csv"
+  val_path: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/val_split_unicode_filtered_matched.csv"
+  test_path: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/test_split_unicode_filtered_matched.csv"
+  pose_dir: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/performance"
+  
+  max_frames: 300
+  max_length: 128
+  step_frames: 5
+  num_keypoints: 266
+
+# Model Configuration
+model:
+  name: "Qwen/Qwen2-7B"  # Decoder-only LLM
+  tokenizer: "Qwen/Qwen2-7B"
+  
+  dropout: 0.1
+  freeze_encoder: false  # N/A for decoder-only
+  freeze_decoder: false
+  
+  # LoRA is REQUIRED for large decoder-only models
+  use_lora: true
+  lora_config:
+    r: 16
+    lora_alpha: 32
+    target_modules: ["q_proj", "v_proj", "k_proj", "o_proj"]  # All attention layers
+    lora_dropout: 0.1
+    bias: "none"
+  
+  # Optional: Quantization for memory efficiency
+  load_in_8bit: false  # Set to true if memory limited
+  load_in_4bit: false  # Or use 4-bit for even more savings
+  
+  params: {}
+
+# Training Configuration
+training:
+  num_epochs: 30
+  batch_size: 4  # Small batch for 7B model
+  learning_rate: 2e-4  # Higher LR for LoRA
+  weight_decay: 0.01
+  betas: [0.9, 0.999]
+  
+  max_grad_norm: 1.0
+  gradient_accumulation_steps: 8  # Effective batch = 32
+  mixed_precision: true
+  warmup_ratio: 0.1
+  
+  checkpoint_dir: "checkpoints/qwen2_7b_isign"
+  save_every: 5
+  eval_every: 1
+  
+  num_beams: 5
+  max_gen_length: 128
+  
+  use_wandb: true
+  project_name: "sign-language-translation"
+  run_name: "qwen2_7b_lora_isign"
+  
+  num_workers: 4
+
+seed: 42

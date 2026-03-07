@@ -1,0 +1,55 @@
+# Configuration for BART-Large on iSign Dataset
+
+# Data Configuration
+data:
+  train_path: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/train_split_unicode_filtered_matched.csv"
+  val_path: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/val_split_unicode_filtered_matched.csv"
+  test_path: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/test_split_unicode_filtered_matched.csv"
+  pose_dir: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/performance"
+  
+  max_frames: 300
+  max_length: 128
+  step_frames: 5
+  num_keypoints: 266
+
+# Model Configuration
+model:
+  name: "facebook/bart-large"  # HuggingFace model name
+  tokenizer: "facebook/bart-large"
+  
+  dropout: 0.1
+  freeze_encoder: false
+  freeze_decoder: false
+  
+  params: {}
+  
+  special_tokens:
+    additional_special_tokens: ["<PERSON>", "<UNKNOWN>"]
+
+# Training Configuration
+training:
+  num_epochs: 50
+  batch_size: 16
+  learning_rate: 5e-5  # Lower LR for pre-trained BART
+  weight_decay: 0.01
+  betas: [0.9, 0.999]
+  
+  max_grad_norm: 1.0
+  gradient_accumulation_steps: 2
+  mixed_precision: true
+  warmup_ratio: 0.05  # Shorter warmup for pre-trained
+  
+  checkpoint_dir: "checkpoints/bart_large_isign"
+  save_every: 5
+  eval_every: 1
+  
+  num_beams: 5
+  max_gen_length: 128
+  
+  use_wandb: true
+  project_name: "sign-language-translation"
+  run_name: "bart_large_isign"
+  
+  num_workers: 4
+
+seed: 42

@@ -1,0 +1,69 @@
+# Configuration for T5-Base on iSign Dataset
+
+# Data Configuration
+data:
+  train_path: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/train_split_unicode_filtered_matched.csv"
+  val_path: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/val_split_unicode_filtered_matched.csv"
+  test_path: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/test_split_unicode_filtered_matched.csv"
+  pose_dir: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/performance"
+  
+  max_frames: 300
+  max_length: 128
+  step_frames: 5  # Downsample every 5th frame
+  num_keypoints: 266  # From your MediaPipe extraction
+
+# Model Configuration
+model:
+  name: "t5-base"  # HuggingFace model name
+  tokenizer: "t5-base"
+  
+  # Training options
+  dropout: 0.1
+  freeze_encoder: false  # Set to true to only train decoder + projection
+  freeze_decoder: false
+  
+  # Additional params (optional)
+  params: {}
+  
+  # Add special tokens if needed
+  special_tokens:
+    additional_special_tokens: ["<PERSON>", "<UNKNOWN>"]
+
+# Training Configuration
+training:
+  # Basic settings
+  num_epochs: 100
+  batch_size: 8  # Adjust based on your GPU memory
+  learning_rate: 1e-4
+  weight_decay: 0.01
+  betas: [0.9, 0.999]
+  
+  # Gradient settings
+  max_grad_norm: 0.5
+  gradient_accumulation_steps: 4  # Increase if batch_size is too small
+  
+  # Mixed precision
+  mixed_precision: true  # Saves memory and speeds up training
+  
+  # Scheduling
+  warmup_ratio: 0.05  # 10% warmup steps
+  
+  # Checkpointing
+  checkpoint_dir: "checkpoints/t5_base_isign"
+  save_every: 5  # Save checkpoint every 5 epochs
+  eval_every: 1  # Evaluate every epoch
+  
+  # Generation
+  num_beams: 5
+  max_gen_length: 128
+  
+  # Logging
+  use_wandb: true
+  project_name: "sign-language-translation"
+  run_name: "t5_base_isign"
+  
+  # System
+  num_workers: 0
+
+# Seed for reproducibility
+seed: 42

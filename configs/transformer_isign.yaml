@@ -1,0 +1,59 @@
+# Configuration for Custom Transformer on iSign Dataset
+
+# Data Configuration
+data:
+  train_path: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/train_split_unicode_filtered_matched.csv"
+  val_path: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/val_split_unicode_filtered_matched.csv"
+  test_path: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/test_split_unicode_filtered_matched.csv"
+  pose_dir: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/performance"
+  
+  max_frames: 300
+  max_length: 128
+  step_frames: 5
+  num_keypoints: 152
+
+# Model Configuration
+model:
+  type: "transformer"  # Custom BERT Encoder + GPT2 Decoder
+  tokenizer: "gpt2"
+  
+  params:
+    encoder_layers: 4
+    decoder_layers: 4
+    hidden_size: 512
+    num_heads: 8
+    dropout: 0.1
+  
+  special_tokens:
+    bos_token: "<s>"
+    eos_token: "</s>"
+    pad_token: "<pad>"
+    unk_token: "<unk>"
+    additional_special_tokens: ["<PERSON>", "<UNKNOWN>"]
+
+# Training Configuration
+training:
+  num_epochs: 100
+  batch_size: 16  # Smaller for custom transformer
+  learning_rate: 1e-4
+  weight_decay: 0.01
+  
+  max_grad_norm: 1.0
+  gradient_accumulation_steps: 2  # Effective batch size = 32
+  mixed_precision: true
+  warmup_ratio: 0.1
+  
+  checkpoint_dir: "checkpoints/transformer_isign"
+  save_every: 5
+  eval_every: 1
+  
+  num_beams: 5
+  max_gen_length: 128
+  
+  use_wandb: true
+  project_name: "sign-language-translation"
+  run_name: "transformer_isign"
+  
+  num_workers: 4
+
+seed: 42
