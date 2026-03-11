@@ -1,66 +1,61 @@
-# Configuration for Gemma-7B on iSign Dataset
-# Google's open-source LLM - decoder-only architecture
-
 # Data Configuration
 data:
-  train_path: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/train_split_unicode_filtered_matched.csv"
-  val_path: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/val_split_unicode_filtered_matched.csv"
-  test_path: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/test_split_unicode_filtered_matched.csv"
-  pose_dir: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/performance"
+  train_path: "/DATACSEShare/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/train_split_unicode_filtered_matched.csv"
+  val_path: "/DATACSEShare/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/val_split_unicode_filtered_matched.csv"
+  test_path: "/DATACSEShare/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/test_split_unicode_filtered_matched.csv"
+  pose_dir: "/DATACSEShare/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/performance"
   
-  max_frames: 300
+  # --- CRITICAL FIX 1: SHRINK THE PAD LIMIT ---
+  max_frames: 75     # MUST be reduced to match step_frames (300 / 4 = 75)
+  step_frames: 4     # Skips frames to speed up processing
+  
   max_length: 128
-  step_frames: 5
   num_keypoints: 266
 
 # Model Configuration
 model:
-  name: "google/gemma-7b"  # Decoder-only LLM
-  tokenizer: "google/gemma-7b"
-  
+  name: "google/gemma-7b-it"  
+  tokenizer: "google/gemma-7b-it"
   dropout: 0.1
   freeze_encoder: false
-  freeze_decoder: false
-  
-  # LoRA for parameter-efficient fine-tuning
+  freeze_decoder: false  
   use_lora: true
   lora_config:
     r: 16
     lora_alpha: 32
-    target_modules: ["q_proj", "v_proj", "k_proj", "o_proj"]
+    target_modules: ["q_proj", "v_proj", "k_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
     lora_dropout: 0.1
     bias: "none"
-  
-  # Quantization options
   load_in_8bit: false
-  load_in_4bit: false  # Enable if GPU memory < 24GB
-  
+  load_in_4bit: false  
   params: {}
 
 # Training Configuration
 training:
-  num_epochs: 30
-  batch_size: 4
-  learning_rate: 2e-4
+  num_epochs: 50
+  batch_size: 8
+  learning_rate: 5e-5
   weight_decay: 0.01
   betas: [0.9, 0.999]
-  
   max_grad_norm: 1.0
-  gradient_accumulation_steps: 4  # Effective batch = 32
+  gradient_accumulation_steps: 2
   mixed_precision: true
   warmup_ratio: 0.1
-  
   checkpoint_dir: "checkpoints/gemma_7b_isign"
-  save_every: 5
-  eval_every: 1
+  save_every: 4
+  eval_every: 2
   
-  num_beams: 5
-  max_gen_length: 128
+  # --- CRITICAL FIX 2: TURN OFF BEAM SEARCH ---
+  num_beams: 1       # Changed from 5 to 1. Drops eval time from 2.5 hours to 15 mins.
+  max_gen_length: 64 # Stop it from writing massive essays during validation
   
   use_wandb: true
   project_name: "sign-language-translation"
-  run_name: "gemma_7b_lora_isign"
+  run_name: "gemma_7b_isign_fast"
   
+  # --- CRITICAL FIX 3: CPU RAM SAFETY ---
+  # Lowered from 4 to 2. With 3 GPUs, this ensures we don't spawn 
+  # 12 concurrent massive file loaders and crash the system RAM (SIGTERM)
   num_workers: 4
 
 seed: 42

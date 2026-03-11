@@ -1,0 +1,51 @@
+2026-03-09 18:13:47,839 - __main__ - INFO - Loaded config from configs/gemma_7b_isign.yaml
+2026-03-09 18:13:47,839 - __main__ - INFO - Using device: cuda:0
+2026-03-09 18:13:55,351 - httpx - INFO - HTTP Request: HEAD https://huggingface.co/google/gemma-7b-it/resolve/main/config.json "HTTP/1.1 200 OK"
+2026-03-09 18:13:55,683 - httpx - INFO - HTTP Request: HEAD https://huggingface.co/google/gemma-7b-it/resolve/main/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-03-09 18:13:56,003 - httpx - INFO - HTTP Request: GET https://huggingface.co/api/models/google/gemma-7b-it/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-03-09 18:13:56,252 - httpx - INFO - HTTP Request: GET https://huggingface.co/api/models/google/gemma-7b-it/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+Traceback (most recent call last):
+  File "/DATACSEShare/sanjeet/ugp-26/Teja/Sign-Language-Translation-Benchmark/train.py", line 150, in <module>
+    main(args.config)
+    ~~~~^^^^^^^^^^^^^
+  File "/DATACSEShare/sanjeet/ugp-26/Teja/Sign-Language-Translation-Benchmark/train.py", line 63, in main
+    train_loader, val_loader, test_loader = create_dataloaders(
+                                            ~~~~~~~~~~~~~~~~~~^
+        train_path=data_config['train_path'],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+        num_keypoints=data_config.get('num_keypoints', 266)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/DATACSEShare/sanjeet/ugp-26/Teja/Sign-Language-Translation-Benchmark/src/dataloaders/sign_dataloader.py", line 306, in create_dataloaders
+    train_dataset = SignLanguageDataset(
+        train_path, pose_dir, tokenizer, add_noise=True, **dataset_kwargs
+    )
+  File "/DATACSEShare/sanjeet/ugp-26/Teja/Sign-Language-Translation-Benchmark/src/dataloaders/sign_dataloader.py", line 59, in __init__
+    self.df = pd.read_csv(self.data_path)
+              ~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "/home/ashishu23/miniconda3/lib/python3.13/site-packages/pandas/io/parsers/readers.py", line 873, in read_csv
+    return _read(filepath_or_buffer, kwds)
+  File "/home/ashishu23/miniconda3/lib/python3.13/site-packages/pandas/io/parsers/readers.py", line 300, in _read
+    parser = TextFileReader(filepath_or_buffer, **kwds)
+  File "/home/ashishu23/miniconda3/lib/python3.13/site-packages/pandas/io/parsers/readers.py", line 1645, in __init__
+    self._engine = self._make_engine(f, self.engine)
+                   ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "/home/ashishu23/miniconda3/lib/python3.13/site-packages/pandas/io/parsers/readers.py", line 1904, in _make_engine
+    self.handles = get_handle(
+                   ~~~~~~~~~~^
+        f,
+        ^^
+    ...<6 lines>...
+        storage_options=self.options.get("storage_options", None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/ashishu23/miniconda3/lib/python3.13/site-packages/pandas/io/common.py", line 926, in get_handle
+    handle = open(
+        handle,
+    ...<3 lines>...
+        newline="",
+    )
+FileNotFoundError: [Errno 2] No such file or directory: '/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/train_split_unicode_filtered_matched.csv'

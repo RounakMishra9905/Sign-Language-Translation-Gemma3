@@ -13,6 +13,7 @@ from transformers import (
     AutoModelForCausalLM,
     AutoConfig,
     PreTrainedTokenizer,
+    BitsAndBytesConfig
 )
 
 logger = logging.getLogger(__name__)
@@ -212,8 +213,8 @@ class ModelFactory:
     @staticmethod
     def create_model(
         model_name: str,
-        num_keypoints: int,
         tokenizer: PreTrainedTokenizer,
+        num_keypoints: int = 266,
         dropout: float = 0.1,
         freeze_encoder: bool = False,
         freeze_decoder: bool = False,
@@ -221,50 +222,61 @@ class ModelFactory:
         lora_config: Optional[Dict] = None,
         load_in_8bit: bool = False,
         load_in_4bit: bool = False,
-        **kwargs,
-    ) -> SignLanguageTranslationModel:
-
-        logger.info(f"Loading model: {model_name}")
-
+        **kwargs
+    ) -> nn.Module:
         config = AutoConfig.from_pretrained(model_name)
         is_encoder_decoder = config.is_encoder_decoder
+        is_causal = not is_encoder_decoder
 
-        load_kwargs = kwargs.copy()
-
-        if load_in_8bit or load_in_4bit:
-            if not PEFT_AVAILABLE:
-                raise ImportError("bitsandbytes + peft required")
-
-            load_kwargs["device_map"] = "auto"
-            load_kwargs["load_in_8bit"] = load_in_8bit
-            load_kwargs["load_in_4bit"] = load_in_4bit
-
-        if is_encoder_decoder:
-            model = AutoModelForSeq2SeqLM.from_pretrained(model_name, **load_kwargs)
-        else:
-            model = AutoModelForCausalLM.from_pretrained(model_name, **load_kwargs)
-
-        try:
-            config_vocab_size = getattr(model.config, "vocab_size", None)
-            if config_vocab_size is not None and len(tokenizer) > config_vocab_size:
-                model.resize_token_embeddings(len(tokenizer))
-            elif config_vocab_size is None:
-                model.resize_token_embeddings(len(tokenizer))
-        except Exception as e:
-            logger.warning(f"Could not resize token embeddings: {e}")
-
-        if hasattr(config, "text_config"):
-            hidden_size = getattr(config.text_config, "hidden_size", 2560)
-        elif hasattr(config, "hidden_size"):   
+        # Hack to get hidden size across architectures
+        if hasattr(config, 'hidden_size'):
             hidden_size = config.hidden_size
-        elif hasattr(config, "d_model"):
+        elif hasattr(config, 'd_model'):
             hidden_size = config.d_model
         else:
-            raise ValueError("Cannot determine hidden size")
+            hidden_size = getattr(config, 'text_config', config).hidden_size
 
-        if load_in_8bit or load_in_4bit:
+        # --- START OF BITSANDBYTES CONFIGURATION FIX ---
+        # 1. Pop out kwargs to prevent "unexpected argument" crashes
+        kwargs.pop('load_in_4bit', None)
+        kwargs.pop('load_in_8bit', None)
+        
+        # 2. Setup the required quantization config object
+        quantization_config = None
+        if load_in_4bit or load_in_8bit:
+            quantization_config = BitsAndBytesConfig(
+                load_in_4bit=load_in_4bit,
+                load_in_8bit=load_in_8bit,
+                bnb_4bit_compute_dtype=torch.bfloat16, # Keeps math fast on A40s!
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_quant_type="nf4"
+            )
+            
+        # 3. Pass the config object instead of the direct booleans
+        if is_encoder_decoder:
+            model = AutoModelForSeq2SeqLM.from_pretrained(
+                model_name,
+                config=config,
+                quantization_config=quantization_config,
+                **kwargs
+            )
+        elif is_causal:
+            model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                config=config,
+                torch_dtype=torch.bfloat16,               
+                attn_implementation="sdpa",  
+                quantization_config=quantization_config,  # <--- FIXED HERE
+                **kwargs
+            )
+        else:
+            raise ValueError(f"Model architecture not supported: {config.architectures}")
+        # --- END OF BITSANDBYTES CONFIGURATION FIX ---
+
+        # PEFT / LoRA setup
+        if PEFT_AVAILABLE and (load_in_8bit or load_in_4bit):
             model = prepare_model_for_kbit_training(model)
-
+            
         if use_lora:
             lora_cfg = {
                 "r": 16,
@@ -303,8 +315,6 @@ class ModelFactory:
 
         total = sum(p.numel() for p in wrapper.parameters())
         trainable = sum(p.numel() for p in wrapper.parameters() if p.requires_grad)
-
-        logger.info(f"Total params: {total:,}")
-        logger.info(f"Trainable params: {trainable:,}")
+        logger.info(f"Total params: {total} | Trainable: {trainable}")
 
         return wrapper

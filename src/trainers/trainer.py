@@ -20,7 +20,7 @@ import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
 
-from ..utils.metrics import compute_bleu, compute_rouge
+from ..utils.metrics import compute_all_metrics, compute_bleu, compute_rouge
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +76,7 @@ class Trainer:
                     config=config
                 )
                 
-        self.best_val_bleu = 0.0
+        self.best_val_metric = 0.0
         self.setup_scheduler()
         
     def setup_scheduler(self):
@@ -147,66 +147,79 @@ class Trainer:
         return total_loss / len(self.train_loader)
 
     @torch.no_grad()
-    def evaluate(self, loader: DataLoader, prefix: str = "val", epoch: int = None) -> Dict:
+    def evaluate(self, epoch):
         self.model.eval()
-        
         all_preds = []
-        all_labels = []
+        all_targets = []
         
-        pbar = tqdm(loader, desc=f"Evaluating {prefix}", disable=not self.is_main_process)
+        # --- UNIVERSAL EOS TOKEN DETECTOR ---
+        # Automatically finds the correct stop token for Gemma, Llama, Qwen, or Phi
+        stop_tokens = ["<end_of_turn>", "<|eot_id|>", "<|im_end|>", "<|end|>"]
+        eos_token_id = self.tokenizer.eos_token_id # Default fallback
         
-        for batch in pbar:
-            poses = batch["input_ids"].to(self.device)
-            pose_masks = batch["attention_mask"].to(self.device)
-            labels = batch["labels"].to(self.device)
-            
-            context = torch.autocast(device_type="cuda", dtype=self.dtype) if self.use_amp else nullcontext()
-            
-            with context:
-                # Generation with strict loop-breaking penalties
-                gen_kwargs = {
-                    "input_ids": poses,
-                    "attention_mask": pose_masks,
-                    "max_length": self.config.get("max_gen_length", 128),
-                    "num_beams": self.config.get("num_beams", 1),
-                    "repetition_penalty": 1.2,
-                    "no_repeat_ngram_size": 3,
-                }
+        for token in stop_tokens:
+            tok_id = self.tokenizer.convert_tokens_to_ids(token)
+            # If the tokenizer recognizes the token (not None and not UNK), use it!
+            if tok_id is not None and tok_id != getattr(self.tokenizer, "unk_token_id", None):
+                eos_token_id = tok_id
+                break
+
+        if self.rank == 0:
+            logger.info(f"Starting evaluation for epoch {epoch}... (Using EOS ID: {eos_token_id})")
+        
+        with torch.no_grad():
+            # Evaluation loop
+            for batch in tqdm(self.val_loader, desc=f"Val Epoch {epoch}", disable=self.rank != 0):
                 
-                generated = self.model.module.generate(**gen_kwargs) if isinstance(self.model, DDP) else self.model.generate(**gen_kwargs)
-            
-            if self.world_size > 1:
-                max_len = torch.tensor(generated.size(1), device=self.device)
-                dist.all_reduce(max_len, op=dist.ReduceOp.MAX)
+                # 1. Move everything to the correct GPU
+                input_ids = batch['input_ids'].to(self.device)
+                video_features = batch['video_features'].to(self.device)
+                attention_mask = batch['attention_mask'].to(self.device)
+                labels = batch['labels'].to(self.device)
+
+                # 2. Extract the actual model (Handling the Multi-GPU DDP wrapper)
+                unwrapped_model = self.model.module if hasattr(self.model, 'module') else self.model
                 
-                if generated.size(1) < max_len:
-                    pad_tensor = torch.full(
-                        (generated.size(0), max_len - generated.size(1)),
-                        self.tokenizer.pad_token_id,
-                        dtype=generated.dtype,
-                        device=self.device
+                # 3. Generate the predictions
+                with autocast(device_type=self.device.type, dtype=torch.float16):
+                    outputs = unwrapped_model.generate(
+                        input_ids=input_ids,
+                        video_features=video_features,
+                        attention_mask=attention_mask,
+                        max_new_tokens=128,             
+                        eos_token_id=eos_token_id,      # Uses the detected universal token!
+                        pad_token_id=self.tokenizer.pad_token_id,
+                        repetition_penalty=1.1,         
+                        do_sample=False                 
                     )
-                    generated = torch.cat([generated, pad_tensor], dim=1)
-                
-                generated = generated.contiguous()
-                labels = labels.contiguous()
-                
-                gathered_preds = [torch.zeros_like(generated) for _ in range(self.world_size)]
-                gathered_labels = [torch.zeros_like(labels) for _ in range(self.world_size)]
-                
-                dist.all_gather(gathered_preds, generated)
-                dist.all_gather(gathered_labels, labels)
-                
-                generated = torch.cat(gathered_preds, dim=0)
-                labels = torch.cat(gathered_labels, dim=0)
-            
-            if self.is_main_process:
-                decoded_preds = self.tokenizer.batch_decode(generated, skip_special_tokens=True)
+
+                # 4. Decode the model's predictions into English text
                 labels = torch.where(labels != -100, labels, self.tokenizer.pad_token_id)
-                decoded_labels = self.tokenizer.batch_decode(labels, skip_special_tokens=True)
                 
+                decoded_preds = self.tokenizer.batch_decode(outputs, skip_special_tokens=True)
+                decoded_labels = self.tokenizer.batch_decode(labels, skip_special_tokens=True)
+
                 all_preds.extend(decoded_preds)
-                all_labels.extend(decoded_labels)
+                all_targets.extend(decoded_labels)
+
+        # 5. Save to CSV and Compute Metrics (Only on the main GPU)
+        if self.rank == 0:
+            all_preds = [p.strip() for p in all_preds]
+            all_targets = [t.strip() for t in all_targets]
+            
+            df = pd.DataFrame({'Target': all_targets, 'Prediction': all_preds})
+            df.to_csv(f'val_predictions_epoch_{epoch}.csv', index=False)
+            
+            # Compute ALL metrics including BERTScore and METEOR
+            metrics = compute_all_metrics(all_targets, all_preds)
+            logger.info(f"Epoch {epoch} Metrics: {metrics}")
+            
+            if self.use_wandb:
+                wandb.log({f"val/{k}": v for k, v in metrics.items()}, step=epoch)
+                
+            return metrics.get('bertscore_f1', 0.0)
+            
+        return 0.0
                 
         metrics = {}
         if self.is_main_process:
@@ -308,13 +321,13 @@ class Trainer:
                     
                     # Ensure it's a float before comparing
                     try:
-                        current_bleu = float(current_bleu)
+                        current_metric = float(current_metric)
                     except (ValueError, TypeError):
-                        current_bleu = 0.0
+                        current_metric = 0.0
                         
-                    is_best = current_bleu > self.best_val_bleu
+                    is_best = current_metric > self.best_val_metric
                     if is_best:
-                        self.best_val_bleu = current_bleu
+                        self.best_val_metric = current_metric
                         
                     self.save_checkpoint(epoch, is_best=is_best)
             

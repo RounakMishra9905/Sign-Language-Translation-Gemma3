@@ -6,7 +6,32 @@ import numpy as np
 from typing import List, Dict
 from collections import Counter
 import math
+import evaluate
 
+def compute_meteor(references: List[str], hypotheses: List[str]) -> Dict[str, float]:
+    """Compute METEOR score (handles synonyms better than BLEU)"""
+    try:
+        meteor = evaluate.load('meteor')
+        results = meteor.compute(predictions=hypotheses, references=references)
+        return {'meteor': results['meteor']}
+    except Exception as e:
+        print(f"METEOR calculation failed: {e}")
+        return {'meteor': 0.0}
+
+def compute_bertscore(references: List[str], hypotheses: List[str]) -> Dict[str, float]:
+    """Compute BERTScore (Checks if the semantic meaning is identical)"""
+    try:
+        bertscore = evaluate.load('bertscore')
+        # Uses RoBERTa under the hood to compare meanings
+        results = bertscore.compute(predictions=hypotheses, references=references, lang="en")
+        return {
+            'bertscore_precision': np.mean(results['precision']),
+            'bertscore_recall': np.mean(results['recall']),
+            'bertscore_f1': np.mean(results['f1'])
+        }
+    except Exception as e:
+        print(f"BERTScore calculation failed: {e}")
+        return {'bertscore_f1': 0.0}
 
 def compute_bleu(references: List[str], hypotheses: List[str], max_order: int = 4) -> Dict[str, float]:
     """
@@ -201,11 +226,18 @@ def compute_all_metrics(references: List[str], hypotheses: List[str]) -> Dict[st
     bleu_scores = compute_bleu(references, hypotheses)
     rouge_scores = compute_rouge(references, hypotheses)
     wer_score = compute_wer(references, hypotheses)
+
+    # Calculate new semantic metrics
+    meteor_score = compute_meteor(references, hypotheses)
+    bert_scores = compute_bertscore(references, hypotheses)
+    
     
     return {
         **bleu_scores,
         **rouge_scores,
-        'wer': wer_score
+        'wer': wer_score,
+        **meteor_score,
+        **bert_scores
     }
 
 

@@ -1,14 +1,14 @@
 #!/bin/bash
 
-# Single GPU Training Script for Sign Language Translation
-# Usage: bash train_single_gpu.sh <config_file>
+# Single-GPU Training Script for Sign Language Translation
+# Usage: bash scripts/train_single_gpu.sh <config_file>
 
 set -e  # Exit on error
 
 # Check arguments
-if [ "$#" -ne 1 ]; then
-    echo "Usage: bash train_single_gpu.sh <config_file>"
-    echo "Example: bash train_single_gpu.sh configs/t5_base_isign.yaml"
+if [ "$#" -lt 1 ]; then
+    echo "Usage: bash scripts/train_single_gpu.sh <config_file>"
+    echo "Example: bash scripts/train_single_gpu.sh configs/t5_base_isign.yaml"
     exit 1
 fi
 
@@ -21,14 +21,23 @@ if [ ! -f "$CONFIG_FILE" ]; then
 fi
 
 echo "=========================================="
-echo "Starting Single GPU Training"
+echo "Starting Single-GPU Training"
 echo "Config: $CONFIG_FILE"
 echo "=========================================="
 
-# Set CUDA device (change if needed)
-export CUDA_VISIBLE_DEVICES=0
+# 🔑 Ensure src/ and project root are visible
+export PYTHONPATH="$(pwd)"
 
-# Run training
+# --- SPECIFIC GPU SELECTION ---
+# Modify this if you want a different GPU
+export CUDA_VISIBLE_DEVICES=1
+
+# --- TIMEOUT AND STABILITY SETTINGS ---
+export NCCL_BLOCKING_WAIT=1
+export NCCL_TIMEOUT=7200
+export TORCH_DISTRIBUTED_DEBUG=INFO
+
+# Launch training
 python train.py --config "$CONFIG_FILE"
 
 echo "=========================================="

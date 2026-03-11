@@ -1,9 +1,9 @@
 # Data Configuration
 data:
-  train_path: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/train_split_unicode_filtered_matched.csv"
-  val_path: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/val_split_unicode_filtered_matched.csv"
-  test_path: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/test_split_unicode_filtered_matched.csv"
-  pose_dir: "/data/dept_share/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/performance"
+  train_path: "/DATACSEShare/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/train_split_unicode_filtered_matched.csv"
+  val_path: "/DATACSEShare/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/val_split_unicode_filtered_matched.csv"
+  test_path: "/DATACSEShare/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/translationexperiment/tokenization/test_split_unicode_filtered_matched.csv"
+  pose_dir: "/DATACSEShare/sanjeet/dattatreya/jan8A40/rtmfeaturesisign/performance"
   
   # --- CRITICAL FIX 1: SHRINK THE PAD LIMIT ---
   max_frames: 75     # MUST be reduced to match step_frames (300 / 4 = 75)
@@ -14,8 +14,8 @@ data:
 
 # Model Configuration
 model:
-  name: "google/gemma-3-4b-it"  
-  tokenizer: "google/gemma-3-4b-it"
+  name: "Qwen/Qwen2.5-1.5B-Instruct"  
+  tokenizer: "Qwen/Qwen2.5-1.5B-Instruct"
   dropout: 0.1
   freeze_encoder: false
   freeze_decoder: false  
@@ -27,21 +27,21 @@ model:
     lora_dropout: 0.1
     bias: "none"
   load_in_8bit: false
-  load_in_4bit: true
+  load_in_4bit: false  
   params: {}
 
 # Training Configuration
 training:
   num_epochs: 50
-  batch_size: 8
+  batch_size: 4
   learning_rate: 5e-5
   weight_decay: 0.01
   betas: [0.9, 0.999]
   max_grad_norm: 1.0
-  gradient_accumulation_steps: 2
+  gradient_accumulation_steps: 4  
   mixed_precision: true
   warmup_ratio: 0.1
-  checkpoint_dir: "checkpoints/gemma_3_4b_isign"
+  checkpoint_dir: "checkpoints/qwen_1.5b_isign"
   save_every: 4
   eval_every: 2
   
@@ -51,7 +51,7 @@ training:
   
   use_wandb: true
   project_name: "sign-language-translation"
-  run_name: "gemma_3_4b_isign_fast"
+  run_name: "qwen_1.5b_isign_fast"
   num_workers: 4
 
 seed: 42

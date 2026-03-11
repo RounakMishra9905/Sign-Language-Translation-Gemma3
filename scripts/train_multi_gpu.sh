@@ -3,7 +3,8 @@
 # Multi-GPU Training Script for Sign Language Translation
 # Uses PyTorch DistributedDataParallel (DDP)
 # Usage: bash scripts/train_multi_gpu.sh <config_file> <num_gpus>
-
+export HF_HOME=/DATACSEShare/sanjeet/ugp-26/Teja/hf_cache
+export TRANSFORMERS_CACHE=/DATACSEShare/sanjeet/ugp-26/Teja/hf_cache
 set -e  # Exit on error
 
 # Check arguments

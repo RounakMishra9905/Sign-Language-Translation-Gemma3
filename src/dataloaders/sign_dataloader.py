@@ -279,11 +279,45 @@ class SignLanguageDataset(Dataset):
     def __len__(self) -> int:
         return len(self.df)
 
-    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
-        row = self.df.iloc[idx]
-        uid = row.get("uid", row.get("video_path", str(idx)))
-
-        pose = self._load_pose(uid)
+    def __getitem__(self, idx):
+        # ... existing code (where you load the video/pose data) ...
+        
+        # 1. NEW PROMPT FORMAT FOR GEMMA 3 IT
+        # Replace your old User/Assistant strings with these exact tokens
+        prompt_prefix = "<start_of_turn>user\nTranslate the following Indian Sign Language video into an English sentence.\n\nVideo: "
+        prompt_suffix = "<end_of_turn>\n<start_of_turn>model\n"
+        
+        # --- START OF THE BUG FIX ---
+        # Safely grab the current row data using the index (idx)
+        if hasattr(self, 'data') and isinstance(self.data, pd.DataFrame):
+            current_row = self.data.iloc[idx]
+        elif hasattr(self, 'df') and isinstance(self.df, pd.DataFrame):
+            current_row = self.df.iloc[idx]
+        else:
+            # Fallback if it's a list of dictionaries
+            current_row = self.data[idx]
+            
+        # Extract the target and add the stop token
+        target_text = str(current_row['Target']) if pd.notna(current_row['Target']) else ""
+        target_text = target_text.strip() + "<end_of_turn>"
+        # --- END OF THE BUG FIX ---
+        
+        # Tokenize texts
+        prefix_ids = self.tokenizer(prompt_prefix, add_special_tokens=False).input_ids
+        suffix_ids = self.tokenizer(prompt_suffix, add_special_tokens=False).input_ids
+        target_ids = self.tokenizer(target_text, add_special_tokens=False).input_ids
+        
+        # ... existing code (where you concatenate the ids) ...
+        
+        # 3. PERFECT LABEL MASKING
+        labels = input_ids.clone()
+        
+        # Calculate exactly where the translation target begins
+        # (Make sure 'video_length' or 'num_video_frames' matches your variable name for the pose sequence length)
+        context_length = len(prefix_ids) + len(video_features) + len(suffix_ids) 
+        
+        # PyTorch CrossEntropyLoss ignores -100. This ensures loss is ONLY calculated on the English text.
+        labels[:context_length] = -100  
 
         return {
             "input_ids": torch.from_numpy(pose),
